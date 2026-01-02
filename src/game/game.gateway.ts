@@ -5,42 +5,52 @@ import {
   SubscribeMessage,
   ConnectedSocket,
   MessageBody,
-} from "@nestjs/websockets";
-import { Server, Socket } from "socket.io";
+} from '@nestjs/websockets';
+import { Server, Socket } from 'socket.io';
+import { MatchmakingService } from '../matchmaking/matchmaking.service';
+import { isMoveLegal } from 'src/chess/isMoveLegal';
+import { getGame } from './game.store';
 
 @WebSocketGateway({
   cors: {
-    origin: "*",
+    origin: '*',
   },
 })
 export class GameGateway {
+  constructor(private readonly matchmaking: MatchmakingService) {}
+
   @WebSocketServer()
   server: Server;
 
   // 🧠 When a client connects
   handleConnection(socket: Socket) {
-    console.log("Client connected:", socket.id);
+    console.log('Client connected:', socket.id);
   }
 
   // 🧠 When a client disconnects
   handleDisconnect(socket: Socket) {
-    console.log("Client disconnected:", socket.id);
+    this.matchmaking.removePlayer(socket.id);
+    console.log('Client disconnected:', socket.id);
+  }
+
+  // ➕ add player to join the game
+  @SubscribeMessage('find_match')
+  async handleFindMatch(@ConnectedSocket() socket: Socket) {
+    await this.matchmaking.addPlayer(socket);
   }
 
   // 🏠 Join a game room
-  @SubscribeMessage("join_game")
-  handleJoinGame(
+  @SubscribeMessage('join_game')
+  async handleJoinGame(
     @MessageBody() gameId: string,
-    @ConnectedSocket() socket: Socket
+    @ConnectedSocket() socket: Socket,
   ) {
-    socket.join(gameId);
-    console.log(
-      `Socket ${socket.id} joined game ${gameId}`
-    );
+    await socket.join(gameId);
+    console.log(`Socket ${socket.id} joined game ${gameId}`);
   }
 
   // ♟️ Relay move to opponent
-  @SubscribeMessage("move")
+  @SubscribeMessage('move')
   handleMove(
     @MessageBody()
     data: {
@@ -48,13 +58,65 @@ export class GameGateway {
       from: { row: number; col: number };
       to: { row: number; col: number };
     },
-    @ConnectedSocket() socket: Socket
   ) {
-    socket
-      .to(data.gameId)
-      .emit("opponent_move", {
-        from: data.from,
-        to: data.to,
-      });
+    const game = getGame(data.gameId);
+    if (!game) return;
+
+    const { board, turn } = game;
+    const piece = board[data.from.row][data.from.col];
+
+    // ❌ Invalid piece
+    if (!piece || piece.color !== turn) return;
+
+    // ❌ Illegal move
+    if (
+      !isMoveLegal(
+        board,
+        data.from.row,
+        data.from.col,
+        data.to.row,
+        data.to.col,
+        turn,
+      )
+    ) {
+      return;
+    }
+
+    // ✅ Apply move
+    const newBoard = board.map((r) => r.slice());
+
+    // Castling
+    if (piece.type === 'king' && Math.abs(data.from.col - data.to.col) === 2) {
+      const rookFromCol = data.to.col === 6 ? 7 : 0;
+      const rookToCol = data.to.col === 6 ? 5 : 3;
+
+      const rook = newBoard[data.from.row][rookFromCol];
+      if (!rook) return;
+
+      newBoard[data.from.row][rookToCol] = {
+        ...rook,
+        hasMoved: true,
+      };
+      newBoard[data.from.row][rookFromCol] = null;
+    }
+
+    newBoard[data.to.row][data.to.col] = {
+      ...piece,
+      hasMoved: true,
+    };
+    newBoard[data.from.row][data.from.col] = null;
+
+    const nextTurn = turn === 'white' ? 'black' : 'white';
+
+    game.board = newBoard;
+    game.turn = nextTurn;
+
+    // 🔔 Broadcast authoritative move
+    this.server.to(data.gameId).emit('authoritative_move', {
+      from: data.from,
+      to: data.to,
+      board: newBoard,
+      turn: nextTurn,
+    });
   }
 }
