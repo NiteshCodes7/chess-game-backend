@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Socket } from 'socket.io';
 import { randomUUID } from 'crypto';
+import { createGame } from 'src/game/game.store';
 
 type QueuedPlayer = {
   socket: Socket;
@@ -29,6 +30,11 @@ export class MatchmakingService {
 
     const white = Math.random() < 0.5 ? p1 : p2;
     const black = white === p1 ? p2 : p1;
+
+    createGame(gameId, {
+      white: white.id,
+      black: black.id,
+    });
 
     await white.join(gameId);
     await black.join(gameId);

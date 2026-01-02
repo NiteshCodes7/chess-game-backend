@@ -3,10 +3,14 @@ import { initialBoard } from '../chess/initialBoard';
 
 export const games = new Map<string, GameState>();
 
-export function createGame(gameId: string) {
+export function createGame(
+  gameId: string,
+  players: { white: string; black: string },
+) {
   games.set(gameId, {
     board: initialBoard,
     turn: 'white',
+    players,
   });
 }
 

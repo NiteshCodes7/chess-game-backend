@@ -52,6 +52,7 @@ export class GameGateway {
   // ♟️ Relay move to opponent
   @SubscribeMessage('move')
   handleMove(
+    @ConnectedSocket() socket: Socket,
     @MessageBody()
     data: {
       gameId: string;
@@ -61,6 +62,15 @@ export class GameGateway {
   ) {
     const game = getGame(data.gameId);
     if (!game) return;
+
+    const expectedSocketId =
+      game.turn === "white"
+        ? game.players.white
+        : game.players.black;
+
+    if (socket.id !== expectedSocketId) {
+      return;
+    }
 
     const { board, turn } = game;
     const piece = board[data.from.row][data.from.col];
