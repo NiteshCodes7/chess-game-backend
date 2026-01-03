@@ -1,4 +1,4 @@
-import { BoardState } from 'src/types/chess';
+import { BoardState } from '../types/chess';
 
 export const initialBoard: BoardState = [
   // Row 0 - Black major pieces

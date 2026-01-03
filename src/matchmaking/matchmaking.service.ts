@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Socket } from 'socket.io';
 import { randomUUID } from 'crypto';
-import { createGame } from 'src/game/game.store';
+import { createGame } from '../game/game.store';
+import { GamePersistenceService } from '../game-persistence/game-persistence.service';
 
 type QueuedPlayer = {
   socket: Socket;
@@ -9,6 +10,8 @@ type QueuedPlayer = {
 
 @Injectable()
 export class MatchmakingService {
+  constructor(private readonly gamePersistence: GamePersistenceService) {}
+
   private queue: QueuedPlayer[] = [];
 
   async addPlayer(socket: Socket) {
@@ -27,6 +30,8 @@ export class MatchmakingService {
 
   private async createGame(p1: Socket, p2: Socket) {
     const gameId = randomUUID();
+
+    await this.gamePersistence.createGame(gameId);
 
     const white = Math.random() < 0.5 ? p1 : p2;
     const black = white === p1 ? p2 : p1;

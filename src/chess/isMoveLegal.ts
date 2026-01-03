@@ -11,7 +11,6 @@ export function isMoveLegal(
   toCol: number,
   color: 'white' | 'black',
 ): boolean {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const simulatedBoard = simulateMove(board, fromRow, fromCol, toRow, toCol);
 
   const kingPos = findKing(simulatedBoard, color);

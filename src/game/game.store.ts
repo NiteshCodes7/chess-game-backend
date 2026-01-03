@@ -11,6 +11,7 @@ export function createGame(
     board: initialBoard,
     turn: 'white',
     players,
+    moveCount: 0,
   });
 }
 

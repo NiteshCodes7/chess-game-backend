@@ -8,8 +8,10 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
-import { isMoveLegal } from 'src/chess/isMoveLegal';
+import { isMoveLegal } from '../chess/isMoveLegal';
 import { getGame } from './game.store';
+import { GamePersistenceService } from '../game-persistence/game-persistence.service';
+import { GameResult } from 'generated/prisma/client';
 
 @WebSocketGateway({
   cors: {
@@ -17,7 +19,7 @@ import { getGame } from './game.store';
   },
 })
 export class GameGateway {
-  constructor(private readonly matchmaking: MatchmakingService) {}
+  constructor(private readonly matchmaking: MatchmakingService, private readonly gamePersistence: GamePersistenceService) {}
 
   @WebSocketServer()
   server: Server;
@@ -51,7 +53,7 @@ export class GameGateway {
 
   // ♟️ Relay move to opponent
   @SubscribeMessage('move')
-  handleMove(
+  async handleMove(
     @ConnectedSocket() socket: Socket,
     @MessageBody()
     data: {
@@ -62,6 +64,18 @@ export class GameGateway {
   ) {
     const game = getGame(data.gameId);
     if (!game) return;
+
+    await this.gamePersistence.saveMove(
+      data.gameId,
+      game.moveCount,
+      data.from,
+      data.to
+    );
+
+    await this.gamePersistence.endGame(
+      data.gameId,
+      GameResult.WHITE_WIN
+    );
 
     const expectedSocketId =
       game.turn === "white"

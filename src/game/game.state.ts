@@ -7,4 +7,5 @@ export type GameState = {
     white: string;
     black: string;
   };
+  moveCount: number;
 };
