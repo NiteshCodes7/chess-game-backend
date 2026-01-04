@@ -1,4 +1,3 @@
-/* eslint-disable prettier/prettier */
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -12,6 +11,7 @@ import { isMoveLegal } from '../chess/isMoveLegal';
 import { getGame } from './game.store';
 import { GamePersistenceService } from '../game-persistence/game-persistence.service';
 import { GameResult } from 'generated/prisma/client';
+import { getGameStatus } from 'src/chess/getGameStatus';
 
 @WebSocketGateway({
   cors: {
@@ -19,7 +19,10 @@ import { GameResult } from 'generated/prisma/client';
   },
 })
 export class GameGateway {
-  constructor(private readonly matchmaking: MatchmakingService, private readonly gamePersistence: GamePersistenceService) {}
+  constructor(
+    private readonly matchmaking: MatchmakingService,
+    private readonly gamePersistence: GamePersistenceService,
+  ) {}
 
   @WebSocketServer()
   server: Server;
@@ -65,26 +68,13 @@ export class GameGateway {
     const game = getGame(data.gameId);
     if (!game) return;
 
-    await this.gamePersistence.saveMove(
-      data.gameId,
-      game.moveCount,
-      data.from,
-      data.to
-    );
+    // Auth expected in this as white: usedId1 and black: userId2
+    // const expectedSocketId =
+    //   game.turn === 'white' ? game.players.white : game.players.black;
 
-    await this.gamePersistence.endGame(
-      data.gameId,
-      GameResult.WHITE_WIN
-    );
-
-    const expectedSocketId =
-      game.turn === "white"
-        ? game.players.white
-        : game.players.black;
-
-    if (socket.id !== expectedSocketId) {
-      return;
-    }
+    // if (socket.id !== expectedSocketId) {
+    //   return;
+    // }
 
     const { board, turn } = game;
     const piece = board[data.from.row][data.from.col];
@@ -134,6 +124,9 @@ export class GameGateway {
 
     game.board = newBoard;
     game.turn = nextTurn;
+    game.moveCount++;
+
+    const status = getGameStatus(newBoard, nextTurn);
 
     // 🔔 Broadcast authoritative move
     this.server.to(data.gameId).emit('authoritative_move', {
@@ -141,6 +134,26 @@ export class GameGateway {
       to: data.to,
       board: newBoard,
       turn: nextTurn,
+      status,
     });
+
+    await this.gamePersistence.saveMove(
+      data.gameId,
+      game.moveCount,
+      data.from,
+      data.to,
+    );
+
+    // 🛑 End game ONLY for terminal states
+    if (status.state === 'checkmate') {
+      await this.gamePersistence.endGame(
+        data.gameId,
+        status.winner === 'white' ? GameResult.WHITE_WIN : GameResult.BLACK_WIN,
+      );
+    }
+
+    if (status.state === 'stalemate') {
+      await this.gamePersistence.endGame(data.gameId, GameResult.DRAW);
+    }
   }
 }

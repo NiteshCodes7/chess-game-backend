@@ -31,8 +31,6 @@ export class MatchmakingService {
   private async createGame(p1: Socket, p2: Socket) {
     const gameId = randomUUID();
 
-    await this.gamePersistence.createGame(gameId);
-
     const white = Math.random() < 0.5 ? p1 : p2;
     const black = white === p1 ? p2 : p1;
 
@@ -53,6 +51,8 @@ export class MatchmakingService {
       gameId,
       color: 'black',
     });
+
+    await this.gamePersistence.createGame(gameId);
 
     console.log(`Game ${gameId} created`);
   }
